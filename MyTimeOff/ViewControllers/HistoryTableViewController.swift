@@ -10,23 +10,23 @@ import UIKit
 import Alamofire
 import MBProgressHUD
 
+
 class HistoryTableViewController: UITableViewController {
     
+    // MARK: - Properties
+    
     var timeOffs = [Detail]()
-    var index: Int!
+    var index: Int = -1
+    
+    
+    
+    // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.tableView.delegate = self
-        self.tableView.dataSource = self
-
-        tableView.register(UINib(nibName: "HistoryTableCell", bundle: nil), forCellReuseIdentifier: "HistoryCell")
-        
-        let refreshControl = UIRefreshControl()
-        refreshControl.attributedTitle = NSAttributedString(string: "Загрузка...")
-        refreshControl.addTarget(self, action: #selector(self.getMyTimeOffs), for: UIControlEvents.valueChanged)
-        tableView.addSubview(refreshControl)
+        configureTableView()
+        configureRefreshControl()
     }
     
 //    override func viewWillAppear(_ animated: Bool) {
@@ -36,65 +36,36 @@ class HistoryTableViewController: UITableViewController {
 //        self.getMyTimeOffs()
 //    }
     
-
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-    }
-
-    // MARK: - Table view data source
-
-//    override func numberOfSections(in tableView: UITableView) -> Int {
-//        // #warning Incomplete implementation, return the number of sections
-//        return 0
-//    }
     
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        self.index = indexPath.row
-        self.performSegue(withIdentifier: "detailTimeOffSeague", sender: nil)
-    }
-
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return self.timeOffs.count
+    
+    // MARK: - Configure
+    
+    fileprivate func configureTableView() {
+        
+        tableView.register(UINib(nibName: "HistoryTableCell", bundle: nil),
+                           forCellReuseIdentifier: "HistoryCell")
+        
+        self.tableView.delegate = self
+        self.tableView.dataSource = self
     }
     
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        if segue.identifier == "detailTimeOffSeague" {
-            let viewController: DetailTableViewController = segue.destination as! DetailTableViewController
-            viewController.timeOff = self.timeOffs[self.index]
-        }
+    fileprivate func configureRefreshControl() {
+        
+        let refreshControl = UIRefreshControl()
+        refreshControl.attributedTitle = NSAttributedString(string: "Загрузка...")
+        refreshControl.addTarget(self, action: #selector(self.getMyTimeOffs), for: UIControlEvents.valueChanged)
+        tableView.addSubview(refreshControl)
     }
-    
-     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "HistoryCell", for: indexPath as IndexPath) as! HistoryTableViewCell
-        
-        cell.labelTitle.text = self.timeOffs[indexPath.row].Detail_Title
-        cell.labelCreateDate.text = "Дата создания - " + self.timeOffs[indexPath.row].Detail_CreateDate
-
-        if(self.timeOffs[indexPath.row].Detail_Type == 4) {
-            //fullPlus
-            cell.imgType.backgroundColor = UIColor.green
-        }
-        else if(self.timeOffs[indexPath.row].Detail_Type == 1) {
-            //fullMinus
-            cell.imgType.backgroundColor = UIColor.red
-        }
-        else if(self.timeOffs[indexPath.row].Detail_Type == 2) {
-            //halfMinus
-            cell.imgType.backgroundColor = UIColor.red
-        }
-        
-        cell.accessoryType = .disclosureIndicator
-        
-        
-        return cell
-     }
 
     
-    // MARK: - Help Methods
     
+    // MARK: - Private
+    
+    //NOTE: Возможно разбить на методы и назвать ReloadData() ?
     @objc func getMyTimeOffs(refreshControl: UIRefreshControl) {
-        //self.startHUD()
+        //self.startProgressHUD()
         
+        //NOTE: url можно вынести в struct Constants
         let urlString = "http://13.94.153.86:82/api/Details?email=" + UserDefaults.standard.string(forKey: "MyTimeOff.Email")!
         Alamofire.request(urlString, method: .get, parameters: nil, encoding: JSONEncoding.default, headers: nil).responseString {
             response in switch response.response?.statusCode {
@@ -122,93 +93,141 @@ class HistoryTableViewController: UITableViewController {
             }
         }
     }
+}
+
+
+
+// MARK: - UITableViewDelegate
+
+extension HistoryTableViewController: UITableViewDelegate {
     
-    func getAlert(title: String, message: String) -> UIAlertController {
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        
+        self.index = indexPath.row
+        
+        //NOTE: все символьные названия лучше выносить в константы.
+        self.performSegue(withIdentifier: "detailTimeOffSeague", sender: nil)
+    }
+}
+
+
+
+// MARK: - UITableViewDataSource
+
+extension HistoryTableViewController: UITableViewDataSource {
+    
+//    override func numberOfSections(in tableView: UITableView) -> Int {
+//        return 1
+//    }
+    
+    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 50
+    }
+    
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return self.timeOffs.count
+    }
+    
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        
+        let cell = tableView.dequeueReusableCell(withIdentifier: "HistoryCell", for: indexPath as IndexPath) as! HistoryTableViewCell
+        
+        cell.labelTitle.text = self.timeOffs[indexPath.row].Detail_Title
+        cell.labelCreateDate.text = "Дата создания - " + self.timeOffs[indexPath.row].Detail_CreateDate
+        
+        //NOTE: Возможно заменить Detail_Type на enum : Int и при необходимости получать rawValue?
+        switch self.timeOffs[indexPath.row].Detail_Type {
+        case 1:
+            //fullMinus
+            cell.imgType.backgroundColor = UIColor.red
+        case 2:
+            //halfMinus
+            cell.imgType.backgroundColor = UIColor.red
+        case 4:
+            //fullPlus
+            cell.imgType.backgroundColor = UIColor.green
+        default:
+            break
+        }
+        
+        cell.accessoryType = .disclosureIndicator
+        
+        return cell
+    }
+}
+
+
+
+// MARK: - Navigation
+
+extension AddDetailTableViewController {
+    
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        
+        //NOTE: Все символьные значения желательно вынести в константы. Например struct Constants.
+        if segue.identifier == "detailTimeOffSeague" {
+            let viewController: DetailTableViewController = segue.destination as! DetailTableViewController
+            viewController.timeOff = self.timeOffs[self.index]
+        }
+    }
+}
+
+
+
+// MARK: - AlertController
+
+extension HistoryTableViewController {
+    
+    fileprivate func getAlert(title: String, message: String) -> UIAlertController {
+        
         let alert = UIAlertController(title: title, message: message, preferredStyle: UIAlertControllerStyle.alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
+            
             switch action.style{
             case .default:
                 print("default")
                 MBProgressHUD.hide(for: self.view, animated: true)
             case .cancel:
                 print("cancel")
-                
             case .destructive:
                 print("destructive")
-                
-                
-            }}))
+            }
+        }))
+        
         return alert;
     }
+}
+
+
+
+// MARK: - MBProgressHUD
+
+extension AddDetailTableViewController {
     
-    func startHUD() {
-        let loadingNotification = MBProgressHUD.showAdded(to: view, animated: true)
+    fileprivate func startProgressHUD() {
+        
+        makeProgressHUD().showAdded(to: view, animated: true)
+    }
+    
+    fileprivate func makeProgressHUD() -> MBProgressHUD {
+        
+        let loadingNotification = MBProgressHUD()
+        
         loadingNotification.mode = MBProgressHUDMode.indeterminate
         loadingNotification.isUserInteractionEnabled = false
         loadingNotification.bezelView.color = UIColor.black
         loadingNotification.contentColor = UIColor.white
         loadingNotification.bezelView.style = .solidColor
         loadingNotification.backgroundView.blurEffectStyle = .extraLight
+        
+        return loadingNotification
     }
-
-    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat
-    {
-        return 50.0;//Choose your custom row height
-    }
-    
-    /*
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "reuseIdentifier", for: indexPath)
-
-        // Configure the cell...
-
-        return cell
-    }
-    */
-
-    /*
-    // Override to support conditional editing of the table view.
-    override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
-        // Return false if you do not want the specified item to be editable.
-        return true
-    }
-    */
-
-    /*
-    // Override to support editing the table view.
-    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCellEditingStyle, forRowAt indexPath: IndexPath) {
-        if editingStyle == .delete {
-            // Delete the row from the data source
-            tableView.deleteRows(at: [indexPath], with: .fade)
-        } else if editingStyle == .insert {
-            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view
-        }    
-    }
-    */
-
-    /*
-    // Override to support rearranging the table view.
-    override func tableView(_ tableView: UITableView, moveRowAt fromIndexPath: IndexPath, to: IndexPath) {
-
-    }
-    */
-
-    /*
-    // Override to support conditional rearranging of the table view.
-    override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
-        // Return false if you do not want the item to be re-orderable.
-        return true
-    }
-    */
-
-    /*
-    // MARK: - Navigation
-
-    // In a storyboard-based application, you will often want to do a little preparation before navigation
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        // Get the new view controller using segue.destinationViewController.
-        // Pass the selected object to the new view controller.
-    }
-    */
-
 }
+
+
+
+
+
+
+
