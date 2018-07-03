@@ -10,8 +10,37 @@ import UIKit
 import Alamofire
 import MBProgressHUD
 
-class AddDetailTableViewController: UITableViewController {
 
+enum PickerType: Int {
+    case date = 1
+    case fromDate = 2
+    case toDate = 3
+}
+
+
+class AddDetailTableViewController: UITableViewController {
+    
+    //MARK: - Properties
+    
+    weak var timeOffTypeTableViewController: TimeOffTypeTableViewController?
+    
+    var isDatePickerHidden = true
+    var isFromDatePickerHidden = true
+    var isToDatePickerHidden = true
+    
+    var keyboardHeight = 0
+    var showKeyboard = false
+    
+    // NOTE: Можно вынести type в enum : String, и получать String значение через rawValue.
+    var type = ""
+    
+    // NOTE: Подумать как вынести логику валидации.
+    var create = false
+    
+    
+    
+    //MARK: - Outlets
+    
     @IBOutlet weak var textViewCommentary: UITextView!
     
     @IBOutlet weak var typeTitle: UILabel!
@@ -25,75 +54,58 @@ class AddDetailTableViewController: UITableViewController {
     @IBOutlet weak var toDateDetail: UILabel!
     @IBOutlet weak var toDate: UIDatePicker!
     
-    var datePickerHidden = true
-    var fromDatePickerHidden = true
-    var toDatePickerHidden = true
     
-    var keyboardHeight = 0
-    var showKeyboard = false
     
-    var type = ""
+    //MARK: - IBActions
     
-    var create = false
-    
-    weak var timeOffTypeTableViewController: TimeOffTypeTableViewController?
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        
-        self.textViewCommentary.isEditable = true
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillShow), name: NSNotification.Name.UIKeyboardWillShow, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide), name: NSNotification.Name.UIKeyboardWillHide, object: nil)
-        
-        
-        self.datePicker.datePickerMode = .date
-        self.datePicker.locale = NSLocale.init(localeIdentifier: "ru_RU") as Locale as Locale
-        
-        self.fromDate.datePickerMode = .time
-        self.fromDate.locale = NSLocale.init(localeIdentifier: "ru_RU") as Locale as Locale
-        
-        self.toDate.datePickerMode = .time
-        self.toDate.locale = NSLocale.init(localeIdentifier: "ru_RU") as Locale as Locale
-        
-        datePickerChanged(picker: 1)
-        datePickerChanged(picker: 2)
-        datePickerChanged(picker: 3)
-        
-    }
-
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
+    @IBAction func datePickerValue(sender: UIDatePicker) {
+        datePickerChanged(pickerType: .date)
     }
     
-    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        if self.datePickerHidden && indexPath.section == 1 && indexPath.row == 1 {
-            return 0
-        }
-        else if self.fromDatePickerHidden && indexPath.section == 2 && indexPath.row == 1 {
-            return 0
-        }
-        else if self.toDatePickerHidden && indexPath.section == 3 && indexPath.row == 1 {
-            return 0
-        }
-        else {
-            return super.tableView(tableView, heightForRowAt: indexPath)
-        }
+    @IBAction func fromDatePickerValue(_ sender: UIDatePicker) {
+        datePickerChanged(pickerType: .fromDate)
+    }
+    
+    @IBAction func toDatePickerValue(_ sender: UIDatePicker) {
+        datePickerChanged(pickerType: .toDate)
+    }
+    
+    @IBAction func unwindToAddTimeOff(segue: UIStoryboardSegue) {
+        
+        setTextViewColor(isValid: true)
+        self.isFullTimeOff()
+        
+        //NOTO: Встречал такую конструкцию, желательно придумать более элегантное решение.
+        tableView.beginUpdates()
+        tableView.endUpdates()
     }
     
     @IBAction func createTimeOff(_ sender: Any) {
-        if self.type == "" {
-            self.typeTitle.textColor = UIColor.red
-            //сюда добавить аллерт в будущем
-            return
-        }
+        
+        guard
+            self.type == ""
+            else {
+                setTextViewColor(isValid: false)
+                //сюда добавить аллерт в будущем
+                return
+            }
+
+        
+        //NOTE: Мне кажется тут немного дичи)
+        //1: Выделить логику проверок из метода shouldPerformSegue
+        //2: Создать extension для DateFormatter
+        //3: Вынести константы url
+        //4: Повторяющиеся вызовы getAlert с кучей параметров вынести в один метод
+        //5: Убрать "_ sender: Any" из параметров функций IBAction
+        //6: Облегчить IBAction, вынеся логику запроса Alamofire в отдельный extension
         
         self.create = true
+        
         if shouldPerformSegue(withIdentifier: "unwindToMainSeague", sender: nil) {
             
             self.view.endEditing(true)
             
-            self.startHUD()
+            self.startProgressHUD()
             
             let date = Date()
             let formatter = DateFormatter()
@@ -102,7 +114,7 @@ class AddDetailTableViewController: UITableViewController {
             formatterHour.dateFormat = "HH:mm"
             
             let urlString = "http://13.94.153.86:82/api/TimeOffs?email=" + UserDefaults.standard.string(forKey: "MyTimeOff.Email")! + "&type=" + self.type
-                        
+            
             Alamofire.request(urlString, method: .put, parameters: ["Detail_TimeOffDate": "00:00:00 " + self.dateDetail.text!, "Detail_CreateDate":  formatter.string(from: date), "Detail_FromDate":  formatter.string(from: self.fromDate.date), "Detail_ToDate":  formatter.string(from: self.toDate.date), "Detail_Comment": self.textViewCommentary.text], encoding: JSONEncoding.default, headers: nil).responseJSON {
                 response in switch response.response?.statusCode {
                 case 200:
@@ -126,69 +138,182 @@ class AddDetailTableViewController: UITableViewController {
             print("NO")
         }
     }
+
     
-    func datePickerChanged (picker: Int) {
-        if(picker == 1) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "dd-MM-yyyy"
-            self.dateDetail.text = formatter.string(from: self.datePicker.date)
-        }
-        else if(picker == 2) {
+    
+    // MARK: - Lifecycle
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        configureTextView()
+        configureDatePickers()
+        configureKeyboard()
+    }
+    
+    
+    
+    // MARK: - Configure
+    
+    fileprivate func configureTextView() {
+        
+        self.textViewCommentary.isEditable = true
+    }
+    
+    fileprivate func configureDatePickers() {
+        
+        let ruLocale = NSLocale.init(localeIdentifier: "ru_RU") as Locale as Locale
+        
+        self.datePicker.datePickerMode = .date
+        self.datePicker.locale = ruLocale
+        
+        self.fromDate.datePickerMode = .time
+        self.fromDate.locale = ruLocale
+        
+        self.toDate.datePickerMode = .time
+        self.toDate.locale = ruLocale
+        
+        datePickerChanged(pickerType: .date)
+        datePickerChanged(pickerType: .fromDate)
+        datePickerChanged(pickerType: .toDate)
+    }
+    
+    fileprivate func configureKeyboard() {
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillShow), name: NSNotification.Name.UIKeyboardWillShow, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide), name: NSNotification.Name.UIKeyboardWillHide, object: nil)
+        
+        // NOTE: Можно так:
+        
+        /*
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardDidShow), name: NSNotification.Name.UIKeyboardDidShow, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(self.keyboardWillHide), name: NSNotification.Name.UIKeyboardWillHide, object: nil)
+        */
+    }
+    
+
+    
+    // MARK: - Private
+    
+    /// Метод для расчета рабочего времени?
+    fileprivate func isFullTimeOff() {
+        
+        if self.type == "fullMinus" {
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm"
-            self.fromDateDetail.text = formatter.string(from: self.fromDate.date)
-        }
-        else if(picker == 3) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            self.toDateDetail.text = formatter.string(from: self.toDate.date)
+            
+            self.fromDateDetail.text = "08:30"
+            self.toDateDetail.text = "17:30"
         }
     }
+}
+
+
+
+// MARK: - Navigation
+
+extension AddDetailTableViewController {
+    
+    override func shouldPerformSegue(withIdentifier identifier: String?, sender: Any?) -> Bool {
+        
+        if let identifier = identifier, identifier == "unwindToMainSeague" {
+            if !self.create {
+                return false
+            }
+        }
+        return true
+    }
+}
+
+
+
+// MARK: - UITableViewDelegate
+
+extension AddDetailTableViewController: UITableViewDelegate {
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        if indexPath.section == 0 && indexPath.row == 0 {
-            self.performSegue(withIdentifier: "SelectTypeSeague", sender: nil)
-        }
-        else if indexPath.section == 1 && indexPath.row == 0 {
-            self.toggleDatepicker(picker: 1)
-        }
-        else if indexPath.section == 2 && indexPath.row == 0
-                && self.type != "fullMinus" {
-            self.toggleDatepicker(picker: 2)
-        }
-        else if indexPath.section == 3 && indexPath.row == 0
-                && self.type != "fullMinus" {
-            self.toggleDatepicker(picker: 3)
-        }
-    }
-    
-    @IBAction func datePickerValue(sender: UIDatePicker) {
-        datePickerChanged(picker: 1)
-    }
-    
-    @IBAction func fromDatePickerValue(_ sender: UIDatePicker) {
-        datePickerChanged(picker: 2)
-    }
-    
-    @IBAction func toDatePickerValue(_ sender: UIDatePicker) {
-        datePickerChanged(picker: 3)
-    }
-    
-    func toggleDatepicker(picker: Int) {
         
-        if(picker == 1) {
-            self.datePickerHidden = !self.datePickerHidden
+        if indexPath.row == 0 {
+            switch indexPath.section {
+            case 0:
+                // NOTE: Это конечно надо выделить в другой метод.
+                self.performSegue(withIdentifier: "SelectTypeSeague", sender: nil)
+            case 1:
+                self.toggleDatepicker(pickerType: .date)
+            case 2:
+                // NOTE: Можно вынести type в enum : String, и получать String значение через rawValue.
+                if self.type != "fullMinus" {
+                    self.toggleDatepicker(pickerType: .fromDate)
+                }
+            case 3:
+                // NOTE: Можно вынести type в enum : String, и получать String значение через rawValue.
+                if self.type != "fullMinus" {
+                    self.toggleDatepicker(pickerType: .toDate)
+                }
+            default:
+                break
+            }
         }
-        else if(picker == 2) {
-            self.fromDatePickerHidden = !self.fromDatePickerHidden
-        }
-        else if(picker == 3) {
-            self.toDatePickerHidden = !self.toDatePickerHidden
-        }
-
-        tableView.beginUpdates()
-        tableView.endUpdates()
     }
+}
+
+
+
+// MARK: - UITableViewDataSource
+
+extension AddDetailTableViewController: UITableViewDataSource {
+    
+    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        
+        //NOTE: Не совсем понял логику, возможно, можно оптимизировать.
+        
+        if indexPath.row == 1 {
+            switch indexPath.section {
+            case 1:
+                if self.isDatePickerHidden {
+                    return 0
+                }
+            case 1:
+                if self.isFromDatePickerHidden {
+                    return 0
+                }
+            case 1:
+                if self.isToDatePickerHidden {
+                    return 0
+                }
+            default:
+                break
+            }
+        } else {
+            return super.tableView(tableView, heightForRowAt: indexPath)
+        }
+    }
+}
+
+
+
+// MARK: - Keyboard
+
+extension AddDetailTableViewController {
+    
+    //NOTE: Можно так:
+    
+    /*
+    func keyboardDidShow(_ notification: Notification) {
+        let
+        info = notification.userInfo as! [String: AnyObject],
+        kbSize = (info[UIKeyboardFrameBeginUserInfoKey] as! NSValue).cgRectValue.size,
+        contentInsets = UIEdgeInsets(top: 0, left: 0, bottom: kbSize.height, right: 0)
+        
+        self.tableView.contentInset = contentInsets
+        self.tableView.scrollIndicatorInsets = contentInsets
+    }
+    
+    func keyboardWillHide(_ notification: Notification) {
+        tableView.contentInset = UIEdgeInsets.zero
+        tableView.scrollIndicatorInsets = UIEdgeInsets.zero
+    }
+    */
     
     @objc func keyboardWillShow(notification: NSNotification) {
         if self.showKeyboard == false {
@@ -207,135 +332,121 @@ class AddDetailTableViewController: UITableViewController {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         self.view.endEditing(true)
     }
-    
-    override func shouldPerformSegue(withIdentifier identifier: String?, sender: Any?) -> Bool {
-        if let ident = identifier {
-            if ident == "unwindToMainSeague" {
-                if self.create == false {
-                    return false
-                }
-            }
-        }
-        return true
-    }
-    
-    func isFullTimeOff() {
-        if self.type == "fullMinus" {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            
-            self.fromDateDetail.text = "08:30"
-            self.toDateDetail.text = "17:30"
-        }
-    }
-    
-    func getAlert(title: String, message: String, statusCode: Int) -> UIAlertController {
-        MBProgressHUD.hide(for: self.view, animated: true)
-        
-        let alert = UIAlertController(title: title, message: message, preferredStyle: UIAlertControllerStyle.alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
-            switch action.style{
-            case .default:
-                print("default")
+}
 
-                if statusCode == 200 {
-                    self.performSegue(withIdentifier: "unwindToMainSeague", sender: nil)
-                }
-            case .cancel:
-                print("cancel")
-                
-            case .destructive:
-                print("destructive")
-                
-                
-            }}))
-        return alert;
+
+
+// MARK: - DatePickers
+
+extension AddDetailTableViewController {
+    
+    //TODO: Сделать extension DateFormatter и выделить enum для типа форматера.
+    
+    func datePickerChanged(pickerType: PickerType) {
+        
+        let formatter = DateFormatter()
+        
+        switch pickerType {
+        case .date:
+            formatter.dateFormat = "dd-MM-yyyy"
+            self.dateDetail.text = formatter.string(from: self.datePicker.date)
+        case .fromDate:
+            formatter.dateFormat = "HH:mm"
+            self.fromDateDetail.text = formatter.string(from: self.fromDate.date)
+        case .toDate:
+            formatter.dateFormat = "HH:mm"
+            self.toDateDetail.text = formatter.string(from: self.toDate.date)
+        }
     }
     
-    func startHUD() {
-        let loadingNotification = MBProgressHUD.showAdded(to: view, animated: true)
+    func toggleDatepicker(pickerType: PickerType) {
+        
+        switch pickerType {
+        case .date:
+            self.isDatePickerHidden = !self.isDatePickerHidden
+        case .fromDate:
+            self.isFromDatePickerHidden = !self.isFromDatePickerHidden
+        case .toDate:
+            self.isToDatePickerHidden = !self.isToDatePickerHidden
+        }
+        
+        //NOTO: Встречал такую конструкцию, желательно придумать более элегантное решение.
+        tableView.beginUpdates()
+        tableView.endUpdates()
+    }
+}
+
+
+
+// MARK: - MBProgressHUD
+
+extension AddDetailTableViewController {
+    
+    fileprivate func startProgressHUD() {
+        
+        makeProgressHUD().showAdded(to: view, animated: true)
+    }
+    
+    fileprivate func makeProgressHUD() -> MBProgressHUD {
+        
+        let loadingNotification = MBProgressHUD()
+        
         loadingNotification.mode = MBProgressHUDMode.indeterminate
         loadingNotification.isUserInteractionEnabled = false
         loadingNotification.bezelView.color = UIColor.black
         loadingNotification.contentColor = UIColor.white
         loadingNotification.bezelView.style = .solidColor
         loadingNotification.backgroundView.blurEffectStyle = .extraLight
+        
+        return loadingNotification
     }
-    
-    @IBAction func unwindToAddTimeOff(segue: UIStoryboardSegue) {
-        self.typeTitle.textColor = UIColor.black
-        self.isFullTimeOff()
-        tableView.beginUpdates()
-        tableView.endUpdates()
-    }
-    
 }
+
+
+
+// MARK: - Text validation
+
+extension AddDetailTableViewController {
     
-    // MARK: - Table view data source
-
-//    override func numberOfSections(in tableView: UITableView) -> Int {
-//        // #warning Incomplete implementation, return the number of sections
-//        return 0
-//    }
-
-//    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-//        // #warning Incomplete implementation, return the number of rows
-//        return 0
-//    }
-
-    /*
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "reuseIdentifier", for: indexPath)
-
-        // Configure the cell...
-
-        return cell
+    fileprivate func setTextViewColor(isValid: Bool) {
+        self.typeTitle.textColor = isValid ? UIColor.black : UIColor.red
     }
-    */
+}
 
-    /*
-    // Override to support conditional editing of the table view.
-    override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
-        // Return false if you do not want the specified item to be editable.
-        return true
+
+
+// MARK: - AlertController
+
+extension AddDetailTableViewController {
+    
+    fileprivate func getAlert(title: String, message: String, statusCode: Int) -> UIAlertController {
+        
+        // NOTE: Можно подумать как сделать более элегантно.
+        
+        MBProgressHUD.hide(for: self.view, animated: true)
+        
+        return makeAlertController()
     }
-    */
-
-    /*
-    // Override to support editing the table view.
-    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCellEditingStyle, forRowAt indexPath: IndexPath) {
-        if editingStyle == .delete {
-            // Delete the row from the data source
-            tableView.deleteRows(at: [indexPath], with: .fade)
-        } else if editingStyle == .insert {
-            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view
-        }    
+    
+    fileprivate func makeAlertController() -> UIAlertController {
+        
+        let alert = UIAlertController(title: title, message: message, preferredStyle: UIAlertControllerStyle.alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
+            
+            switch action.style{
+            case .default:
+                print("default")
+                
+                if statusCode == 200 {
+                    self.performSegue(withIdentifier: "unwindToMainSeague", sender: nil)
+                }
+            case .cancel:
+                print("cancel")
+            case .destructive:
+                print("destructive")
+            }
+        }))
+        
+        return alert;
     }
-    */
-
-    /*
-    // Override to support rearranging the table view.
-    override func tableView(_ tableView: UITableView, moveRowAt fromIndexPath: IndexPath, to: IndexPath) {
-
-    }
-    */
-
-    /*
-    // Override to support conditional rearranging of the table view.
-    override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
-        // Return false if you do not want the item to be re-orderable.
-        return true
-    }
-    */
-
-    /*
-    // MARK: - Navigation
-
-    // In a storyboard-based application, you will often want to do a little preparation before navigation
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        // Get the new view controller using segue.destinationViewController.
-        // Pass the selected object to the new view controller.
-    }
-    */
-
-
+}
